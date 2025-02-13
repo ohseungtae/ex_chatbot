@@ -5,7 +5,7 @@ import time
 import urllib.parse
 import mplfinance as mpf
 import FinanceDataReader as fdr
-import chromadb
+#import chromadb
 import tiktoken
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
