@@ -5,7 +5,6 @@ import time
 import urllib.parse
 import mplfinance as mpf
 import FinanceDataReader as fdr
-#import chromadb
 import tiktoken
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
@@ -15,8 +14,6 @@ from langchain.vectorstores import FAISS
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
-from transformers import pipeline
-
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -53,6 +50,11 @@ def main():
         st.subheader(f"📈 {company_name} 최근 주가 추이")
         visualize_stock(company_name, "일")
 
+        with st.chat_message("assistant"):
+            st.markdown("📢 최근 기업 뉴스 목록:")
+            for news in news_data:
+                st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
+
     if query := st.chat_input("질문을 입력해주세요."):
         with st.chat_message("user"):
             st.markdown(query)
@@ -67,7 +69,6 @@ def main():
                     for doc in result['source_documents']:
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
 
-
 def crawl_news(company):
     today = datetime.today()
     start_date = (today - timedelta(days=5)).strftime('%Y%m%d')
@@ -81,32 +82,28 @@ def crawl_news(company):
     articles = soup.select("ul.list_news > li")
 
     data = []
-    summarizer = pipeline("summarization")
     for article in articles[:10]:
         title = article.select_one("a.news_tit").text
         link = article.select_one("a.news_tit")['href']
         content = article.select_one("div.news_dsc").text if article.select_one("div.news_dsc") else ""
-        summary = summarizer(content, max_length=100, min_length=30, do_sample=False)[0]['summary_text']
-        data.append({"title": title, "link": link, "summary": summary})
+        data.append({"title": title, "link": link, "content": content})
 
     return data
-
 
 def tiktoken_len(text):
     tokenizer = tiktoken.get_encoding("cl100k_base")
     tokens = tokenizer.encode(text)
     return len(tokens)
 
-
 def get_text_chunks(news_data):
-    texts = [f"{item['title']}\n{item['summary']}" for item in news_data]
+    # 뉴스 요약 없이 제목과 내용을 그대로 사용
+    texts = [f"{item['title']}\n{item['content']}" for item in news_data]
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=900,
         chunk_overlap=100,
         length_function=tiktoken_len
     )
     return text_splitter.create_documents(texts)
-
 
 def get_vectorstore(text_chunks):
     embeddings = HuggingFaceEmbeddings(
@@ -116,14 +113,12 @@ def get_vectorstore(text_chunks):
     )
     return FAISS.from_documents(text_chunks, embeddings)
 
-
 def create_chat_chain(vectorstore, openai_api_key):
     llm = ChatOpenAI(openai_api_key=openai_api_key, model_name='gpt-4', temperature=0)
     return ConversationalRetrievalChain.from_llm(
         llm=llm, chain_type="stuff", retriever=vectorstore.as_retriever(),
         memory=ConversationBufferMemory(memory_key='chat_history', return_messages=True, output_key='answer'),
         get_chat_history=lambda h: h, return_source_documents=True)
-
 
 def visualize_stock(symbol, period):
     df = fdr.DataReader(symbol, '2024-01-01')
@@ -136,7 +131,6 @@ def visualize_stock(symbol, period):
     elif period == "년":
         df = df.resample('Y').last()
     mpf.plot(df, type='candle', style='charles', title=f"{symbol} 주가 ({period})", volume=True)
-
 
 if __name__ == '__main__':
     main()
