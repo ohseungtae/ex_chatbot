@@ -1,0 +1,15 @@
+pysqlite3-binary
+streamlit
+langchain
+langchain_community
+torch
+chromadb
+finance-datareader
+unstructured
+transformers
+tiktoken
+openai
+mplfinance
+plotly
+loguru
+bs4
