@@ -16,9 +16,18 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-font_path = "fonts/NanumGothic.ttf"  # 폰트 파일 경로
+import os
+
+# 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
+font_path = os.path.join(os.path.dirname(__file__), "fonts", "NanumGothic.ttf")
+
+# FontProperties 객체 생성
 fontprop = fm.FontProperties(fname=font_path)
-plt.rcParams["font.family"] = fontprop.get_name()
+font_name = fontprop.get_name()
+
+# matplotlib 폰트 설정
+plt.rcParams["font.family"] = font_name
+plt.rcParams["axes.unicode_minus"] = False
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -188,8 +197,8 @@ def visualize_stock(company, period):
     elif period == "년":
         df = df.resample('Y').last()
 
-    # returnfig=True 옵션으로 Figure와 Axes를 mplfinance가 생성하도록 함
-    fig, axes = mpf.plot(
+    # returnfig=True 옵션으로 mplfinance가 Figure+Axes를 생성하게 한 뒤, st.pyplot()으로 출력
+    fig, _ = mpf.plot(
         df,
         type='candle',
         style='charles',
@@ -198,7 +207,6 @@ def visualize_stock(company, period):
         returnfig=True
     )
     st.pyplot(fig)
-
 
 if __name__ == '__main__':
     main()
