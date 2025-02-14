@@ -123,16 +123,28 @@ def create_chat_chain(vectorstore, openai_api_key):
 def get_ticker(company):
     """
     fdr.StockListing('KRX')로부터 입력한 회사명에 해당하는 티커 코드를 반환합니다.
+    환경에 따라 컬럼명이 다를 수 있으므로 모두 확인합니다.
     """
     try:
         listing = fdr.StockListing('KRX')
-        # 'Name' 컬럼이 회사명, 'Symbol' 컬럼이 티커 코드입니다.
-        ticker_row = listing[listing['Name'] == company]
+        # 컬럼명을 확인합니다.
+        if "Symbol" in listing.columns and "Name" in listing.columns:
+            name_col = "Name"
+            ticker_col = "Symbol"
+        elif "종목코드" in listing.columns and "기업명" in listing.columns:
+            name_col = "기업명"
+            ticker_col = "종목코드"
+        else:
+            st.error("KRX 상장 기업 정보를 불러올 수 없습니다.")
+            return None
+
+        ticker_row = listing[listing[name_col] == company]
         if ticker_row.empty:
             return None
         else:
-            ticker = ticker_row.iloc[0]['Symbol']
-            return ticker
+            ticker = ticker_row.iloc[0][ticker_col]
+            # 티커가 숫자일 경우 6자리 문자열로 변환 (예: '5930' -> '005930')
+            return str(ticker).zfill(6)
     except Exception as e:
         st.error(f"티커 변환 중 오류 발생: {e}")
         return None
