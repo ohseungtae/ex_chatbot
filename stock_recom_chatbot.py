@@ -122,20 +122,23 @@ def create_chat_chain(vectorstore, openai_api_key):
 
 def get_ticker(company):
     """
-    FinanceDataReader를 통해 KRX (혹은 KOSPI) 상장 기업 정보를 불러오고,
+    FinanceDataReader를 통해 KRX 상장 기업 정보를 불러오고,
     입력한 기업명에 해당하는 티커 코드를 반환합니다.
+    환경에 따라 컬럼명이 다를 수 있으므로 여러 경우를 처리합니다.
     """
     try:
         listing = fdr.StockListing('KRX')
-        # 만약 listing이 비어있다면 KOSPI로 시도
         if listing.empty:
             listing = fdr.StockListing('KOSPI')
         if listing.empty:
             st.error("KRX 혹은 KOSPI 상장 기업 정보를 불러올 수 없습니다.")
             return None
 
-        # 컬럼명이 어떤 형태로 되어있는지 확인합니다.
-        if "Symbol" in listing.columns and "Name" in listing.columns:
+        # 여러 가지 컬럼 조합에 대해 처리합니다.
+        if "Code" in listing.columns and "Name" in listing.columns:
+            name_col = "Name"
+            ticker_col = "Code"
+        elif "Symbol" in listing.columns and "Name" in listing.columns:
             name_col = "Name"
             ticker_col = "Symbol"
         elif "종목코드" in listing.columns and "기업명" in listing.columns:
@@ -145,18 +148,19 @@ def get_ticker(company):
             st.error("상장 기업 정보의 컬럼명이 예상과 다릅니다: " + ", ".join(listing.columns))
             return None
 
-        # 좌우 공백 제거 후 비교합니다.
+        # 좌우 공백 제거 후 비교
         ticker_row = listing[listing[name_col].str.strip() == company.strip()]
         if ticker_row.empty:
             st.error(f"입력한 기업명 '{company}'에 해당하는 정보가 없습니다.\n예시: '삼성전자' 입력 시 티커 '005930'을 반환합니다.")
             return None
         else:
             ticker = ticker_row.iloc[0][ticker_col]
-            # 숫자로 반환된 경우 6자리 문자열로 변환 (예: 5930 -> '005930')
+            # 숫자 형식인 경우 6자리 문자열로 변환 (예: 5930 -> '005930')
             return str(ticker).zfill(6)
     except Exception as e:
         st.error(f"티커 변환 중 오류 발생: {e}")
         return None
+
 
 def visualize_stock(company, period):
     ticker = get_ticker(company)
