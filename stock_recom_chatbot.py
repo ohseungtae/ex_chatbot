@@ -19,19 +19,17 @@ import matplotlib.font_manager as fm
 import os
 
 # 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
-font_path = os.path.join(os.path.dirname(__file__), "fonts", "NanumGothic.ttf")
-
-# FontProperties 객체 생성
-fontprop = fm.FontProperties(fname=font_path)
-font_name = fontprop.get_name()
-
-# matplotlib 폰트 설정
-plt.rcParams["font.family"] = font_name
-plt.rcParams["axes.unicode_minus"] = False
+font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
+if os.path.exists(font_path):
+    font_name = fm.FontProperties(fname=font_path).get_name()
+    plt.rcParams['font.family'] = font_name
+    plt.rcParams['axes.unicode_minus'] = False
+else:
+    st.warning("폰트 파일을 찾을 수 없습니다. 한글이 깨질 수 있습니다.")
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
-    st.title("_기업 정보 분석 및 주가 예측 :red[QA Chat]_ :chart_with_upwards_trend:")
+    st.title("_기업 정보 분석 주식 추천 :red[QA Chat]_ :chart_with_upwards_trend:")
 
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
