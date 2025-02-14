@@ -14,6 +14,7 @@ from langchain.vectorstores import FAISS
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
+import matplotlib as plt
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -182,7 +183,11 @@ def visualize_stock(company, period):
         df = df.resample('M').last()
     elif period == "년":
         df = df.resample('Y').last()
-    mpf.plot(df, type='candle', style='charles', title=f"{company}({ticker}) 주가 ({period})", volume=True)
+
+    # Figure 객체 생성 및 mplfinance 플롯 그리기
+    fig, ax = plt.subplots(figsize=(10, 6))
+    mpf.plot(df, type='candle', style='charles', title=f"{company}({ticker}) 주가 ({period})", volume=True, ax=ax)
+    st.pyplot(fig)
 
 if __name__ == '__main__':
     main()
