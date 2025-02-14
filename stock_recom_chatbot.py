@@ -120,8 +120,35 @@ def create_chat_chain(vectorstore, openai_api_key):
         memory=ConversationBufferMemory(memory_key='chat_history', return_messages=True, output_key='answer'),
         get_chat_history=lambda h: h, return_source_documents=True)
 
-def visualize_stock(symbol, period):
-    df = fdr.DataReader(symbol, '2024-01-01')
+def get_ticker(company):
+    """
+    fdr.StockListing('KRX')로부터 입력한 회사명에 해당하는 티커 코드를 반환합니다.
+    """
+    try:
+        listing = fdr.StockListing('KRX')
+        # 'Name' 컬럼이 회사명, 'Symbol' 컬럼이 티커 코드입니다.
+        ticker_row = listing[listing['Name'] == company]
+        if ticker_row.empty:
+            return None
+        else:
+            ticker = ticker_row.iloc[0]['Symbol']
+            return ticker
+    except Exception as e:
+        st.error(f"티커 변환 중 오류 발생: {e}")
+        return None
+
+def visualize_stock(company, period):
+    ticker = get_ticker(company)
+    if not ticker:
+        st.error("해당 기업의 티커 코드를 찾을 수 없습니다. 올바른 기업명을 입력했는지 확인해주세요.")
+        return
+
+    try:
+        df = fdr.DataReader(ticker, '2024-01-01')
+    except Exception as e:
+        st.error(f"주가 데이터를 불러오는 중 오류 발생: {e}")
+        return
+
     if period == "일":
         df = df.tail(30)
     elif period == "주":
@@ -130,7 +157,7 @@ def visualize_stock(symbol, period):
         df = df.resample('M').last()
     elif period == "년":
         df = df.resample('Y').last()
-    mpf.plot(df, type='candle', style='charles', title=f"{symbol} 주가 ({period})", volume=True)
+    mpf.plot(df, type='candle', style='charles', title=f"{company}({ticker}) 주가 ({period})", volume=True)
 
 if __name__ == '__main__':
     main()
