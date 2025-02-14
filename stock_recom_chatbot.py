@@ -15,6 +15,10 @@ from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+font_path = "fonts/NanumGothic.ttf"  # 폰트 파일 경로
+fontprop = fm.FontProperties(fname=font_path)
+plt.rcParams["font.family"] = fontprop.get_name()
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
