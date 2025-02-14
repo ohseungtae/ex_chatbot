@@ -184,10 +184,17 @@ def visualize_stock(company, period):
     elif period == "년":
         df = df.resample('Y').last()
 
-    # Figure 객체 생성 및 mplfinance 플롯 그리기
-    fig, ax = plt.subplots(figsize=(10, 6))
-    mpf.plot(df, type='candle', style='charles', title=f"{company}({ticker}) 주가 ({period})", volume=True, ax=ax)
+    # returnfig=True 옵션으로 Figure와 Axes를 mplfinance가 생성하도록 함
+    fig, axes = mpf.plot(
+        df,
+        type='candle',
+        style='charles',
+        title=f"{company}({ticker}) 주가 ({period})",
+        volume=True,
+        returnfig=True
+    )
     st.pyplot(fig)
+
 
 if __name__ == '__main__':
     main()
