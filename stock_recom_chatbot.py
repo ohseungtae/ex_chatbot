@@ -27,10 +27,12 @@ if os.path.exists(font_path):
 else:
     st.warning("폰트 파일을 찾을 수 없습니다. 한글이 깨질 수 있습니다.")
 
+
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
-    st.title("기업 정보 분석 QA Chat")
+    st.title("기업 정보 분석 및 주가 예측 QA Chat")
 
+    # 분석 결과 및 대화 내역을 session_state에 저장
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
@@ -41,6 +43,8 @@ def main():
         st.session_state.news_data = None
     if "company_name" not in st.session_state:
         st.session_state.company_name = None
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 기업의 최근 정보를 확인하신 후 궁금한 점을 물어보세요."}]
 
     with st.sidebar:
         openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
@@ -57,7 +61,6 @@ def main():
             st.warning("해당 기업의 최근 뉴스를 찾을 수 없습니다.")
             st.stop()
 
-        # 분석 결과를 session_state에 저장
         st.session_state.news_data = news_data
         st.session_state.company_name = company_name
 
@@ -67,7 +70,7 @@ def main():
         st.session_state.conversation = create_chat_chain(vectorstore, openai_api_key)
         st.session_state.processComplete = True
 
-    # 분석 결과가 있으면 항상 상단에 출력
+    # 상단에 분석 결과 항상 표시
     if st.session_state.processComplete and st.session_state.company_name:
         st.subheader(f"{st.session_state.company_name} 최근 주가 추이")
         visualize_stock(st.session_state.company_name, "일")
@@ -75,20 +78,29 @@ def main():
         for news in st.session_state.news_data:
             st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
 
-    # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
+    # 이전 대화 기록 표시 (최상단에 위치)
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 채팅 입력은 항상 하단에 남음
     if query := st.chat_input("질문을 입력해주세요."):
+        # 사용자 입력 기록
+        st.session_state.messages.append({"role": "user", "content": query})
         with st.chat_message("user"):
             st.markdown(query)
 
+        # LLM을 통한 답변 생성
         with st.chat_message("assistant"):
             with st.spinner("분석 중..."):
                 result = st.session_state.conversation({"question": query})
-                response = result['answer']
-
-                st.markdown(response)
+                answer = result['answer']
+                st.markdown(answer)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
                 with st.expander("참고 뉴스 확인"):
                     for doc in result['source_documents']:
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
+
 
 def crawl_news(company):
     today = datetime.today()
