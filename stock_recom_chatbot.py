@@ -29,14 +29,18 @@ else:
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
-    st.title("_기업 정보 분석 주식 추천 :red[QA Chat]_ :chart_with_upwards_trend:")
+    st.title("기업 정보 분석 QA Chat")
 
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = None
     if "processComplete" not in st.session_state:
-        st.session_state.processComplete = None
+        st.session_state.processComplete = False
+    if "news_data" not in st.session_state:
+        st.session_state.news_data = None
+    if "company_name" not in st.session_state:
+        st.session_state.company_name = None
 
     with st.sidebar:
         openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
@@ -53,20 +57,25 @@ def main():
             st.warning("해당 기업의 최근 뉴스를 찾을 수 없습니다.")
             st.stop()
 
+        # 분석 결과를 session_state에 저장
+        st.session_state.news_data = news_data
+        st.session_state.company_name = company_name
+
         text_chunks = get_text_chunks(news_data)
         vectorstore = get_vectorstore(text_chunks)
 
         st.session_state.conversation = create_chat_chain(vectorstore, openai_api_key)
         st.session_state.processComplete = True
 
-        st.subheader(f"📈 {company_name} 최근 주가 추이")
-        visualize_stock(company_name, "일")
+    # 분석 결과가 있으면 항상 상단에 출력
+    if st.session_state.processComplete and st.session_state.company_name:
+        st.subheader(f"{st.session_state.company_name} 최근 주가 추이")
+        visualize_stock(st.session_state.company_name, "일")
+        st.markdown("📢 최근 기업 뉴스 목록:")
+        for news in st.session_state.news_data:
+            st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
 
-        with st.chat_message("assistant"):
-            st.markdown("📢 최근 기업 뉴스 목록:")
-            for news in news_data:
-                st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
-
+    # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
     if query := st.chat_input("질문을 입력해주세요."):
         with st.chat_message("user"):
             st.markdown(query)
