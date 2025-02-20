@@ -108,14 +108,14 @@ def tiktoken_len(text):
     return len(tokens)
 
 def get_text_chunks(news_data):
-    # 뉴스 요약 없이 제목과 내용을 그대로 사용
     texts = [f"{item['title']}\n{item['content']}" for item in news_data]
+    metadatas = [{"source": item["link"]} for item in news_data]
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=900,
         chunk_overlap=100,
         length_function=tiktoken_len
     )
-    return text_splitter.create_documents(texts)
+    return text_splitter.create_documents(texts, metadatas=metadatas)
 
 def get_vectorstore(text_chunks):
     embeddings = HuggingFaceEmbeddings(
