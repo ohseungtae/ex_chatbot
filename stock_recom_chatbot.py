@@ -101,9 +101,10 @@ def main():
         for news in st.session_state.news_data:
             st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
     # ✅ 이전 대화 이력 표시
-    for role, message in st.session_state.chat_history:
-        with st.chat_message(role):
-            st.markdown(message)
+    if st.session_state.chat_history:  # 채팅 이력이 있을 때만 출력
+        for role, message in st.session_state.chat_history:
+            with st.chat_message(role):
+                st.markdown(message)
     # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
     if query := st.chat_input("질문을 입력해주세요."):
         with st.chat_message("user"):
@@ -111,14 +112,14 @@ def main():
 
         with st.chat_message("assistant"):
             with st.spinner("분석 중..."):
-                # ✅ 기존 채팅 기록과 새 질문을 포함한 입력
+                # ✅ 기존 채팅 기록과 새 질문을 포함한 기록을 conversation에 넘김
                 result = st.session_state.conversation(
                     {"question": query, "chat_history": st.session_state.chat_history})
                 response = result['answer']
 
                 st.markdown(response)
 
-                # ✅ 채팅 이력을 session_state에 저장
+                # ✅ 채팅 이력을 session_state에 저장하여 업데이트
                 st.session_state.chat_history.append(("user", query))
                 st.session_state.chat_history.append(("assistant", response))
 
