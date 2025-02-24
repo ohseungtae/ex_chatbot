@@ -22,7 +22,7 @@ def main():
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
-        st.session_state.chat_history = None
+        st.session_state.chat_history = []
     if "processComplete" not in st.session_state:
         st.session_state.processComplete = False
     if "news_data" not in st.session_state:
@@ -100,7 +100,10 @@ def main():
         st.markdown("📢 최근 기업 뉴스 목록:")
         for news in st.session_state.news_data:
             st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
-
+    # ✅ 이전 대화 이력 표시
+    for role, message in st.session_state.chat_history:
+        with st.chat_message(role):
+            st.markdown(message)
     # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
     if query := st.chat_input("질문을 입력해주세요."):
         with st.chat_message("user"):
@@ -108,14 +111,20 @@ def main():
 
         with st.chat_message("assistant"):
             with st.spinner("분석 중..."):
-                result = st.session_state.conversation({"question": query})
+                # ✅ 기존 채팅 기록과 새 질문을 포함한 입력
+                result = st.session_state.conversation(
+                    {"question": query, "chat_history": st.session_state.chat_history})
                 response = result['answer']
 
                 st.markdown(response)
+
+                # ✅ 채팅 이력을 session_state에 저장
+                st.session_state.chat_history.append(("user", query))
+                st.session_state.chat_history.append(("assistant", response))
+
                 with st.expander("참고 뉴스 확인"):
                     for doc in result['source_documents']:
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
-
 def crawl_news(company):
     today = datetime.today()
     start_date = (today - timedelta(days=5)).strftime('%Y%m%d')
