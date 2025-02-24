@@ -1,7 +1,5 @@
 import streamlit as st
 import requests
-import random
-import time
 import urllib.parse
 import mplfinance as mpf
 import FinanceDataReader as fdr
@@ -17,6 +15,7 @@ from langchain.memory import ConversationBufferMemory
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
+import pandas as pd
 
 # 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
 font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
@@ -42,6 +41,9 @@ def main():
         st.session_state.news_data = None
     if "company_name" not in st.session_state:
         st.session_state.company_name = None
+    if "selected_period" not in st.session_state:
+        st.session_state.selected_period = "1day"
+
 
     with st.sidebar:
         openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
@@ -70,8 +72,43 @@ def main():
 
     # 분석 결과가 있으면 항상 상단에 출력
     if st.session_state.processComplete and st.session_state.company_name:
-        st.subheader(f"{st.session_state.company_name} 최근 주가 추이")
-        visualize_stock(st.session_state.company_name, "일")
+        st.subheader(f"📈 {st.session_state.company_name} 최근 주가 추이")
+        selected_period = st.radio(
+            "기간 선택",
+            options=["1day", "week", "1month", "1year"],
+            horizontal=True,
+            index=["1day", "week", "1month", "1year"].index(st.session_state.selected_period)
+        )
+        if selected_period != st.session_state.selected_period:
+            st.session_state.selected_period = selected_period
+
+        st.write(f"🔍 선택된 기간: {st.session_state.selected_period}")
+
+        with st.spinner(f"📊 {st.session_state.company_name} ({st.session_state.selected_period}) 데이터 불러오는 중..."):
+            if selected_period in ["1day", "week"]:
+                ticker = get_ticker(st.session_state.company_name, source="yahoo")  # ✅ 야후 파이낸스용 티커
+                if not ticker:
+                    st.error("해당 기업의 야후 파이낸스 티커 코드를 찾을 수 없습니다.")
+                    return
+
+                interval = "1m" if selected_period == "1day" else "5m"
+                df = get_intraday_data_yahoo(ticker, period="5d" if selected_period == "week" else "1d",
+                                             interval=interval)
+
+            else:
+                ticker = get_ticker(st.session_state.company_name, source="fdr")  # ✅ FinanceDataReader용 티커
+                if not ticker:
+                    st.error("해당 기업의 FinanceDataReader 티커 코드를 찾을 수 없습니다.")
+                    return
+
+                df = get_daily_stock_data_fdr(ticker, selected_period)
+
+            if df.empty:
+                st.warning(
+                    f"📉 {st.session_state.company_name} - 해당 기간({st.session_state.selected_period})의 거래 데이터가 없습니다.")
+            else:
+                plot_stock_plotly(df, st.session_state.company_name, st.session_state.selected_period)
+
         st.markdown("📢 최근 기업 뉴스 목록:")
         for news in st.session_state.news_data:
             st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
@@ -142,79 +179,121 @@ def create_chat_chain(vectorstore, openai_api_key):
         memory=ConversationBufferMemory(memory_key='chat_history', return_messages=True, output_key='answer'),
         get_chat_history=lambda h: h, return_source_documents=True)
 
-def get_ticker(company):
-    """
-    FinanceDataReader를 통해 KRX 상장 기업 정보를 불러오고,
-    입력한 기업명에 해당하는 티커 코드를 반환합니다.
-    환경에 따라 컬럼명이 다를 수 있으므로 여러 경우를 처리합니다.
-    """
+# ✅ 1. 최근 거래일 찾기 함수
+def get_recent_trading_day():
+    today = datetime.now()
+    if today.hour < 9:  # 9시 이전이면 전날을 기준으로
+        today -= timedelta(days=1)
+
+    while today.weekday() in [5, 6]:  # 토요일(5), 일요일(6)이면 하루씩 감소
+        today -= timedelta(days=1)
+
+    return today.strftime('%Y-%m-%d')
+
+# ✅ 2. 티커 조회 함수 (야후 & FinanceDataReader)
+def get_ticker(company, source="yahoo"):
     try:
         listing = fdr.StockListing('KRX')
-        if listing.empty:
-            listing = fdr.StockListing('KOSPI')
-        if listing.empty:
-            st.error("KRX 혹은 KOSPI 상장 기업 정보를 불러올 수 없습니다.")
-            return None
-
-        # 여러 가지 컬럼 조합에 대해 처리합니다.
-        if "Code" in listing.columns and "Name" in listing.columns:
-            name_col = "Name"
-            ticker_col = "Code"
-        elif "Symbol" in listing.columns and "Name" in listing.columns:
-            name_col = "Name"
-            ticker_col = "Symbol"
-        elif "종목코드" in listing.columns and "기업명" in listing.columns:
-            name_col = "기업명"
-            ticker_col = "종목코드"
-        else:
-            st.error("상장 기업 정보의 컬럼명이 예상과 다릅니다: " + ", ".join(listing.columns))
-            return None
-
-        # 좌우 공백 제거 후 비교
-        ticker_row = listing[listing[name_col].str.strip() == company.strip()]
-        if ticker_row.empty:
-            st.error(f"입력한 기업명 '{company}'에 해당하는 정보가 없습니다.\n예시: '삼성전자' 입력 시 티커 '005930'을 반환합니다.")
-            return None
-        else:
-            ticker = ticker_row.iloc[0][ticker_col]
-            # 숫자 형식인 경우 6자리 문자열로 변환 (예: 5930 -> '005930')
-            return str(ticker).zfill(6)
-    except Exception as e:
-        st.error(f"티커 변환 중 오류 발생: {e}")
+        ticker_row = listing[listing["Name"].str.strip() == company.strip()]
+        if not ticker_row.empty:
+            krx_ticker = str(ticker_row.iloc[0]["Code"]).zfill(6)
+            if source == "yahoo":
+                return krx_ticker + ".KS"  # ✅ 야후 파이낸스용 티커 변환
+            return krx_ticker  # ✅ FinanceDataReader용 티커
         return None
 
-
-def visualize_stock(company, period):
-    ticker = get_ticker(company)
-    if not ticker:
-        st.error("해당 기업의 티커 코드를 찾을 수 없습니다. 올바른 기업명을 입력했는지 확인해주세요.")
-        return
-
-    try:
-        df = fdr.DataReader(ticker, '2024-01-01')
     except Exception as e:
-        st.error(f"주가 데이터를 불러오는 중 오류 발생: {e}")
+        st.error(f"티커 조회 중 오류 발생: {e}")
+        return None
+
+# ✅ 3. 야후 파이낸스에서 분봉 데이터 가져오기 (1day, week)
+def get_intraday_data_yahoo(ticker, period="1d", interval="1m"):
+    try:
+        stock = yf.Ticker(ticker)
+        df = stock.history(period=period, interval=interval)
+
+        if df.empty:
+            return pd.DataFrame()
+
+        df = df.reset_index()
+        df = df.rename(columns={"Datetime": "Date", "Close": "Close"})
+
+        # ✅ 주말 데이터 제거 (혹시 남아있는 경우 대비)
+        df["Date"] = pd.to_datetime(df["Date"])
+        df = df[df["Date"].dt.weekday < 5].reset_index(drop=True)
+
+        return df
+    except Exception as e:
+        st.error(f"야후 파이낸스 데이터 불러오기 오류: {e}")
+        return pd.DataFrame()
+
+# ✅ 4. FinanceDataReader를 통한 일별 시세 (1month, 1year)
+def get_daily_stock_data_fdr(ticker, period):
+    try:
+        end_date = get_recent_trading_day()
+        start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=30 if period == "1month" else 365)).strftime('%Y-%m-%d')
+        df = fdr.DataReader(ticker, start_date, end_date)
+
+        if df.empty:
+            return pd.DataFrame()
+
+        df = df.reset_index()
+        df = df.rename(columns={"Date": "Date", "Close": "Close"})
+
+        # ✅ 주말 데이터 완전 제거
+        df["Date"] = pd.to_datetime(df["Date"])
+        df = df[df["Date"].dt.weekday < 5].reset_index(drop=True)
+
+        return df
+    except Exception as e:
+        st.error(f"FinanceDataReader 데이터 불러오기 오류: {e}")
+        return pd.DataFrame()
+
+# ✅ 5. Plotly를 이용한 주가 시각화 함수 (x축 포맷 최적화)
+def plot_stock_plotly(df, company, period):
+    if df is None or df.empty:
+        st.warning(f"📉 {company} - 해당 기간({period})의 거래 데이터가 없습니다.")
         return
 
-    if period == "일":
-        df = df.tail(30)
-    elif period == "주":
-        df = df.resample('W').last()
-    elif period == "월":
-        df = df.resample('M').last()
-    elif period == "년":
-        df = df.resample('Y').last()
+    fig = go.Figure()
 
-    # returnfig=True 옵션으로 mplfinance가 Figure+Axes를 생성하게 한 뒤, st.pyplot()으로 출력
-    fig, _ = mpf.plot(
-        df,
-        type='candle',
-        style='charles',
-        title=f"{company}({ticker}) 주가 ({period})",
-        volume=True,
-        returnfig=True
+    # ✅ x축 날짜 형식 설정
+    if period == "1day":
+        df["FormattedDate"] = df["Date"].dt.strftime("%H:%M")  # ✅ 1day → HH:MM 형식
+    elif period == "week":
+        df["FormattedDate"] = df["Date"].dt.strftime("%m-%d %H:%M")  # ✅ week → MM-DD HH:MM 형식
+    else:
+        df["FormattedDate"] = df["Date"].dt.strftime("%m-%d")  # ✅ 1month, 1year → MM-DD 형식
+
+    if period in ["1day", "week"]:
+        fig.add_trace(go.Scatter(
+            x=df["FormattedDate"],
+            y=df["Close"],
+            mode="lines+markers",
+            line=dict(color="royalblue", width=2),
+            marker=dict(size=5),
+            name="체결가"
+        ))
+    else:
+        fig.add_trace(go.Candlestick(
+            x=df["FormattedDate"],
+            open=df["Open"],
+            high=df["High"],
+            low=df["Low"],
+            close=df["Close"],
+            name="캔들 차트"
+        ))
+
+    fig.update_layout(
+        title=f"{company} 주가 ({period})",
+        xaxis_title="시간" if period == "1day" else "날짜",
+        yaxis_title="주가 (KRW)",
+        template="plotly_white",
+        xaxis=dict(showgrid=True, type="category", tickangle=-45),
+        hovermode="x unified"
     )
-    st.pyplot(fig)
+
+    st.plotly_chart(fig)
 
 if __name__ == '__main__':
     main()
