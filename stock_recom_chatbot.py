@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
 import pandas as pd
-
+import yfinance as yf
 # 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
 font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
 if os.path.exists(font_path):
