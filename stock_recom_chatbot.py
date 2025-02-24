@@ -11,22 +11,9 @@ from langchain.vectorstores import FAISS
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
-import os
 import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
-
-# 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
-font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
-if os.path.exists(font_path):
-    font_name = fm.FontProperties(fname=font_path).get_name()
-    plt.rcParams['font.family'] = font_name
-    plt.rcParams['axes.unicode_minus'] = False
-else:
-    st.warning("폰트 파일을 찾을 수 없습니다. 한글이 깨질 수 있습니다.")
-
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
