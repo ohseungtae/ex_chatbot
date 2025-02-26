@@ -122,10 +122,6 @@ def main():
             # 사용자 메시지 추가
             st.session_state.chat_history.append({"role": "user", "content": query})
 
-            # 사용자 메시지 즉시 표시
-            with st.chat_message("user"):
-                st.markdown(query)
-
             # 응답 생성
             with st.chat_message("assistant"):
                 with st.spinner("분석 중..."):
@@ -148,7 +144,7 @@ def main():
             })
 
             # 자동으로 페이지 새로고침 없이 대화 내용 업데이트
-            st.experimental_rerun()
+            st.rerun()  # experimental_rerun() 대신 rerun() 사용
 
 
 def crawl_news(company):
