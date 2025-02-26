@@ -15,14 +15,16 @@ import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
 
+
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
     st.title("기업 정보 분석 QA Chat")
 
+    # 세션 상태 초기화
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+        st.session_state.chat_history = []  # 빈 리스트로 초기화
     if "processComplete" not in st.session_state:
         st.session_state.processComplete = False
     if "news_data" not in st.session_state:
@@ -31,7 +33,6 @@ def main():
         st.session_state.company_name = None
     if "selected_period" not in st.session_state:
         st.session_state.selected_period = "1day"
-
 
     with st.sidebar:
         openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
@@ -42,6 +43,9 @@ def main():
         if not openai_api_key or not company_name:
             st.info("OpenAI API 키와 기업명을 입력해주세요.")
             st.stop()
+
+        # 새 분석 시작 시 이전 대화 내역 초기화
+        st.session_state.chat_history = []
 
         news_data = crawl_news(company_name)
         if not news_data:
@@ -74,7 +78,7 @@ def main():
 
         with st.spinner(f"📊 {st.session_state.company_name} ({st.session_state.selected_period}) 데이터 불러오는 중..."):
             if selected_period in ["1day", "week"]:
-                ticker = get_ticker(st.session_state.company_name, source="yahoo")  # ✅ 야후 파이낸스용 티커
+                ticker = get_ticker(st.session_state.company_name, source="yahoo")
                 if not ticker:
                     st.error("해당 기업의 야후 파이낸스 티커 코드를 찾을 수 없습니다.")
                     return
@@ -84,7 +88,7 @@ def main():
                                              interval=interval)
 
             else:
-                ticker = get_ticker(st.session_state.company_name, source="fdr")  # ✅ FinanceDataReader용 티커
+                ticker = get_ticker(st.session_state.company_name, source="fdr")
                 if not ticker:
                     st.error("해당 기업의 FinanceDataReader 티커 코드를 찾을 수 없습니다.")
                     return
@@ -101,34 +105,52 @@ def main():
         for news in st.session_state.news_data:
             st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
 
-    # ✅ 이전 대화 이력 표시
-    if st.session_state.chat_history:  # 채팅 이력이 있을 때만 출력
-        for role, message in st.session_state.chat_history:
-            with st.chat_message(role):
-                st.markdown(message)
-
-    # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
-    if query := st.chat_input("질문을 입력해주세요."):
-        with st.chat_message("user"):
-            st.markdown(query)
-
-        # 대화 이력에 사용자 메시지 추가
-        st.session_state.chat_history.append(("user", query))
-
-        with st.chat_message("assistant"):
-            with st.spinner("분석 중..."):
-                result = st.session_state.conversation({"question": query})
-                response = result['answer']
-
-                st.markdown(response)
-
-                # 대화 이력에 챗봇 응답 추가
-                st.session_state.chat_history.append(("assistant", response))
-
-                # 참고 뉴스도 표시
+    # 대화 히스토리 표시
+    st.subheader("💬 대화 내용")
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            # 소스 문서 표시 (응답인 경우에만)
+            if message["role"] == "assistant" and "source_documents" in message:
                 with st.expander("참고 뉴스 확인"):
-                    for doc in result['source_documents']:
+                    for doc in message["source_documents"]:
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
+
+    # 채팅 입력: 사용자가 질문을 입력하면 대화가 이어짐
+    if st.session_state.processComplete:  # 분석이 완료된 후에만 입력 허용
+        if query := st.chat_input("질문을 입력해주세요."):
+            # 사용자 메시지 추가
+            st.session_state.chat_history.append({"role": "user", "content": query})
+
+            # 사용자 메시지 즉시 표시
+            with st.chat_message("user"):
+                st.markdown(query)
+
+            # 응답 생성
+            with st.chat_message("assistant"):
+                with st.spinner("분석 중..."):
+                    result = st.session_state.conversation({"question": query})
+                    response = result['answer']
+
+                    # 응답 표시
+                    st.markdown(response)
+
+                    # 소스 문서 표시
+                    with st.expander("참고 뉴스 확인"):
+                        for doc in result['source_documents']:
+                            st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
+
+            # 응답을 대화 히스토리에 추가
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": response,
+                "source_documents": result.get('source_documents', [])
+            })
+
+            # 자동으로 페이지 새로고침 없이 대화 내용 업데이트
+            st.experimental_rerun()
+
+
 def crawl_news(company):
     today = datetime.today()
     start_date = (today - timedelta(days=5)).strftime('%Y%m%d')
@@ -150,10 +172,12 @@ def crawl_news(company):
 
     return data
 
+
 def tiktoken_len(text):
     tokenizer = tiktoken.get_encoding("cl100k_base")
     tokens = tokenizer.encode(text)
     return len(tokens)
+
 
 def get_text_chunks(news_data):
     texts = [f"{item['title']}\n{item['content']}" for item in news_data]
@@ -165,6 +189,7 @@ def get_text_chunks(news_data):
     )
     return text_splitter.create_documents(texts, metadatas=metadatas)
 
+
 def get_vectorstore(text_chunks):
     embeddings = HuggingFaceEmbeddings(
         model_name="jhgan/ko-sroberta-multitask",
@@ -173,12 +198,14 @@ def get_vectorstore(text_chunks):
     )
     return FAISS.from_documents(text_chunks, embeddings)
 
+
 def create_chat_chain(vectorstore, openai_api_key):
     llm = ChatOpenAI(openai_api_key=openai_api_key, model_name='gpt-4', temperature=0)
     return ConversationalRetrievalChain.from_llm(
         llm=llm, chain_type="stuff", retriever=vectorstore.as_retriever(),
         memory=ConversationBufferMemory(memory_key='chat_history', return_messages=True, output_key='answer'),
         get_chat_history=lambda h: h, return_source_documents=True)
+
 
 # ✅ 1. 최근 거래일 찾기 함수
 def get_recent_trading_day():
@@ -190,6 +217,7 @@ def get_recent_trading_day():
         today -= timedelta(days=1)
 
     return today.strftime('%Y-%m-%d')
+
 
 # ✅ 2. 티커 조회 함수 (야후 & FinanceDataReader)
 def get_ticker(company, source="yahoo"):
@@ -206,6 +234,7 @@ def get_ticker(company, source="yahoo"):
     except Exception as e:
         st.error(f"티커 조회 중 오류 발생: {e}")
         return None
+
 
 # ✅ 3. 야후 파이낸스에서 분봉 데이터 가져오기 (1day, week)
 def get_intraday_data_yahoo(ticker, period="1d", interval="1m"):
@@ -228,11 +257,13 @@ def get_intraday_data_yahoo(ticker, period="1d", interval="1m"):
         st.error(f"야후 파이낸스 데이터 불러오기 오류: {e}")
         return pd.DataFrame()
 
+
 # ✅ 4. FinanceDataReader를 통한 일별 시세 (1month, 1year)
 def get_daily_stock_data_fdr(ticker, period):
     try:
         end_date = get_recent_trading_day()
-        start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=30 if period == "1month" else 365)).strftime('%Y-%m-%d')
+        start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(
+            days=30 if period == "1month" else 365)).strftime('%Y-%m-%d')
         df = fdr.DataReader(ticker, start_date, end_date)
 
         if df.empty:
@@ -249,6 +280,7 @@ def get_daily_stock_data_fdr(ticker, period):
     except Exception as e:
         st.error(f"FinanceDataReader 데이터 불러오기 오류: {e}")
         return pd.DataFrame()
+
 
 # ✅ 5. Plotly를 이용한 주가 시각화 함수 (x축 포맷 최적화)
 def plot_stock_plotly(df, company, period):
@@ -295,6 +327,7 @@ def plot_stock_plotly(df, company, period):
     )
 
     st.plotly_chart(fig)
+
 
 if __name__ == '__main__':
     main()
